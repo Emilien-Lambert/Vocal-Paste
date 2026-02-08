@@ -23,6 +23,15 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+### Hugging Face Setup
+
+You need to authenticate with Hugging Face to download the model:
+
+1. Run `huggingface-cli login`.
+2. Enter your access token (create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)).
+
+For more details, refer to the [Hugging Face Login documentation](https://huggingface.co/docs/huggingface_hub/quick-start#login).
+
 On first run, the model (~3 GB) downloads automatically.
 
 ## Run
