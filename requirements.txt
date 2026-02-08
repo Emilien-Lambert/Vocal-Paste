@@ -1,0 +1,9 @@
+mlx-voxtral
+pyperclip
+voxmlx
+pynput
+pyobjc-framework-AVFoundation
+numpy
+soxr
+soundfile
+sounddevice
