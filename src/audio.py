@@ -1,49 +1,39 @@
 import sounddevice as sd
-import soundfile as sf
 import numpy as np
 import src.config as config
 from src.utils import log
 
+
 class AudioRecorder:
     def __init__(self):
         self.is_recording = False
-        self.recording_data = []
         self.stream = None
+        self._on_chunk = None
 
-    def _callback(self, indata, frames, time, status):
-        """Internal callback for sounddevice."""
-        if self.is_recording:
-            self.recording_data.append(indata.copy())
-
-    def start(self):
-        """Starts the audio recording stream."""
+    def start(self, on_chunk=None):
+        """Starts audio recording at 16kHz. Chunks are sent via on_chunk callback."""
         if not self.is_recording:
             log("Recording started...", verbose_only=True)
-            self.recording_data = []
+            self._on_chunk = on_chunk
             self.is_recording = True
             self.stream = sd.InputStream(
-                samplerate=config.SAMPLE_RATE, 
-                channels=1, 
-                callback=self._callback
+                samplerate=config.SAMPLE_RATE,
+                channels=1,
+                dtype="float32",
+                callback=self._callback,
             )
             self.stream.start()
 
-    def stop(self) -> str | None:
-        """Stops recording, saves file, and returns the filename."""
+    def _callback(self, indata, frames, time, status):
+        if self.is_recording and self._on_chunk is not None:
+            self._on_chunk(indata[:, 0].copy())
+
+    def stop(self):
+        """Stops recording."""
         if self.is_recording:
             self.is_recording = False
             self.stream.stop()
             self.stream.close()
-            
+            self.stream = None
+            self._on_chunk = None
             log("Recording stopped.", verbose_only=True)
-            log("Processing...", verbose_only=True)
-
-            if not self.recording_data:
-                log("No audio data recorded.", verbose_only=True)
-                return None
-
-            # Save to file
-            audio_data = np.concatenate(self.recording_data, axis=0)
-            sf.write(config.TEMP_WAVE_FILE, audio_data, config.SAMPLE_RATE)
-            return config.TEMP_WAVE_FILE
-        return None

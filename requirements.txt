@@ -1,10 +1,11 @@
-mlx-voxtral
+mlx
+mistral-common
+safetensors
+huggingface_hub
 pyperclip
-voxmlx
 pynput
 pyobjc-framework-AVFoundation
 numpy
-soxr
 soundfile
 sounddevice
 python-dotenv
