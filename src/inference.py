@@ -23,6 +23,7 @@ class InferenceService:
         self._audio_queue = queue.Queue()
         self._thread = None
         self._result = None
+        self._stopped = False
 
     def initialize(self):
         log("Loading model...", verbose_only=True)
@@ -52,6 +53,7 @@ class InferenceService:
             except queue.Empty:
                 break
         self._result = None
+        self._stopped = False
         self._thread = threading.Thread(target=self._streaming_worker, daemon=True)
         self._thread.start()
 
@@ -60,6 +62,7 @@ class InferenceService:
 
     def stop_streaming(self) -> str:
         start_time = time.time()
+        self._stopped = True
         self._audio_queue.put(("STOP",))
         self._thread.join(timeout=60)
         elapsed = time.time() - start_time
@@ -161,9 +164,9 @@ class InferenceService:
                     if token_id == self.eos_token_id:
                         break
                     output_tokens.append(token_id)
-                    # Print token in real-time
-                    text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
-                    print(text, end="", flush=True)
+                    if config.VERBOSE and not self._stopped:
+                        text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
+                        print(text, end="", flush=True)
 
                     if i > 0 and i % 64 == 0:
                         mx.clear_cache()
@@ -244,9 +247,7 @@ class InferenceService:
                             if token_id == self.eos_token_id:
                                 break
                             output_tokens.append(token_id)
-                            text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
-                            print(text, end="", flush=True)
-                            if i > 0 and i % 256 == 0:
+                            if i > 0 and i % 64 == 0:
                                 mx.clear_cache()
                             y = next_y
 
@@ -255,10 +256,6 @@ class InferenceService:
                             token_id = y.item()
                             if token_id != self.eos_token_id:
                                 output_tokens.append(token_id)
-                                text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
-                                print(text, end="", flush=True)
-
-                    print(flush=True)  # newline after streaming output
                     self._result = sp.decode(output_tokens, special_token_policy=SpecialTokenPolicy.IGNORE).strip()
 
                     # Free all session memory

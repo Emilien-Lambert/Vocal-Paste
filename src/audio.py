@@ -36,4 +36,4 @@ class AudioRecorder:
             self.stream.close()
             self.stream = None
             self._on_chunk = None
-            log("Recording stopped.", verbose_only=True)
+            log("\nRecording stopped.", verbose_only=True)
