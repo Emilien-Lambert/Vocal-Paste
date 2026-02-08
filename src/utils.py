@@ -1,5 +1,6 @@
 import subprocess
-import src.config as config
+
+from src import config
 
 def log(message: str, verbose_only: bool = False) -> None:
     """Standardized logging function."""
@@ -13,5 +14,5 @@ def paste_text_to_system() -> None:
     try:
         script = 'tell application "System Events" to keystroke "v" using {command down}'
         subprocess.run(['osascript', '-e', script], check=False)
-    except Exception as e:
+    except OSError as e:
         log(f"ERROR: Failed to auto-paste: {e}")

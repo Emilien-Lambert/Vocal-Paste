@@ -1,0 +1,24 @@
+[MAIN]
+load-plugins=
+
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-many-arguments,
+    too-many-positional-arguments,
+    too-many-instance-attributes,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-return-statements,
+    invalid-name,
+    import-outside-toplevel,
+    consider-using-from-import,
+    broad-exception-caught,
+    unsubscriptable-object,
+    global-statement
+
+[FORMAT]
+max-line-length=100

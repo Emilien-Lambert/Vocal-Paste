@@ -128,7 +128,7 @@ def log_mel_spectrogram(audio: np.ndarray) -> mx.array:
     spec_real = frames @ dft_real.T
     spec_imag = frames @ dft_imag.T
 
-    magnitudes = (spec_real[:-1] ** 2 + spec_imag[:-1] ** 2)
+    magnitudes = spec_real[:-1] ** 2 + spec_imag[:-1] ** 2
 
     mel_filters = _get_mel_filters()
     mel_spec = magnitudes @ mel_filters.T

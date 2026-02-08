@@ -9,3 +9,4 @@ numpy
 soundfile
 sounddevice
 python-dotenv
+pylint

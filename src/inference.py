@@ -2,7 +2,7 @@ import threading
 import queue
 import time
 import numpy as np
-import src.config as config
+from src import config
 from src.utils import log
 
 N_LEFT_PAD_TOKENS = 32
@@ -66,7 +66,7 @@ class InferenceService:
         self._audio_queue.put(("STOP",))
         self._thread.join(timeout=60)
         elapsed = time.time() - start_time
-        log(f"Lag after stop: {elapsed:.2f}s", verbose_only=True)
+        log(f"\nLag after stop: {elapsed:.2f}s", verbose_only=True)
         return self._result or ""
 
     def shutdown(self):
@@ -121,7 +121,7 @@ class InferenceService:
                     else:
                         audio_embeds = new_embeds
                     mx.eval(audio_embeds)
-                
+
                 # CRITICAL FIX: Evaluate encoder cache to prevent graph explosion
                 if encoder_cache is not None:
                     for c in encoder_cache:
@@ -144,10 +144,14 @@ class InferenceService:
                 if not prefilled:
                     if n_total_decoded + audio_embeds.shape[0] < PREFIX_LEN:
                         return
-                    decoder_cache = [RotatingKVCache(self.sliding_window) for _ in range(self.n_layers)]
+                    decoder_cache = [
+                        RotatingKVCache(self.sliding_window)
+                        for _ in range(self.n_layers)
+                    ]
                     prefix_embeds = (text_embeds + audio_embeds[:PREFIX_LEN])[None, :, :]
                     logits = model.decode(prefix_embeds, t_cond, "causal", decoder_cache)
-                    mx.eval(logits, *[x for c in decoder_cache for x in (c.keys, c.values)])
+                    cache_flat = [x for c in decoder_cache for x in (c.keys, c.values)]
+                    mx.eval(logits, *cache_flat)
                     y = sample(logits)
                     mx.async_eval(y)
                     audio_embeds = audio_embeds[PREFIX_LEN:]
@@ -162,17 +166,25 @@ class InferenceService:
                 for i in range(n_decodable):
                     token_embed = model.language_model.embed(y.reshape(1, 1))[0, 0]
                     step_embed = (audio_embeds[i] + token_embed)[None, None, :]
-                    logits = model.decode(step_embed, t_cond, mask=None, cache=decoder_cache)
+                    logits = model.decode(
+                        step_embed, t_cond, mask=None, cache=decoder_cache,
+                    )
                     next_y = sample(logits)
-                    mx.eval(next_y, *[c.keys for c in decoder_cache], *[c.values for c in decoder_cache])
+                    cache_flat = [
+                        x for c in decoder_cache for x in (c.keys, c.values)
+                    ]
+                    mx.eval(next_y, *cache_flat)
 
                     token_id = y.item()
                     if token_id == self.eos_token_id:
                         break
                     output_tokens.append(token_id)
-                    
+
                     if config.VERBOSE:
-                        text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
+                        text = sp.decode(
+                            [token_id],
+                            special_token_policy=SpecialTokenPolicy.IGNORE,
+                        )
                         print(text, end="", flush=True)
 
                     if i > 0 and i % 64 == 0:
@@ -206,7 +218,7 @@ class InferenceService:
                 # Process buffer
                 combined_chunk = np.zeros(0, dtype=np.float32)
                 stop_received = False
-                
+
                 for m in messages:
                     if not isinstance(m, tuple):
                         continue
@@ -214,7 +226,7 @@ class InferenceService:
                         combined_chunk = np.append(combined_chunk, m[1])
                     elif m[0] == "STOP":
                         stop_received = True
-                
+
                 # 1. Feed combined audio (Optimization: One encoder call for many chunks)
                 if len(combined_chunk) > 0:
                     pending_audio = np.append(pending_audio, combined_chunk)
@@ -223,7 +235,10 @@ class InferenceService:
                     # Encode as much as possible
                     while len(pending_audio) >= SAMPLES_PER_TOKEN:
                         if first_cycle:
-                            left_pad = np.zeros(N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
+                            left_pad = np.zeros(
+                                N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN,
+                                dtype=np.float32,
+                            )
                             n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
                             chunk = np.concatenate([left_pad, pending_audio[:n_feed]])
                             pending_audio = pending_audio[n_feed:]
@@ -242,10 +257,16 @@ class InferenceService:
                 # 3. Handle STOP if it was in the batch
                 if stop_received:
                     # Flush remaining audio + right padding
-                    right_pad = np.zeros(N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
+                    right_pad = np.zeros(
+                        N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32,
+                    )
                     if first_cycle:
-                        left_pad = np.zeros(N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
-                        flush_chunk = np.concatenate([left_pad, pending_audio, right_pad])
+                        left_pad = np.zeros(
+                            N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32,
+                        )
+                        flush_chunk = np.concatenate(
+                            [left_pad, pending_audio, right_pad],
+                        )
                         first_cycle = False
                     else:
                         flush_chunk = np.concatenate([pending_audio, right_pad])
@@ -254,11 +275,27 @@ class InferenceService:
                     encode_chunk(flush_chunk)
 
                     # Final prefill if not done yet
-                    if audio_embeds is not None and not prefilled and audio_embeds.shape[0] >= PREFIX_LEN:
-                        decoder_cache = [RotatingKVCache(self.sliding_window) for _ in range(self.n_layers)]
-                        prefix_embeds = (text_embeds + audio_embeds[:PREFIX_LEN])[None, :, :]
-                        logits = model.decode(prefix_embeds, t_cond, "causal", decoder_cache)
-                        mx.eval(logits, *[x for c in decoder_cache for x in (c.keys, c.values)])
+                    can_prefill = (
+                        audio_embeds is not None
+                        and not prefilled
+                        and audio_embeds.shape[0] >= PREFIX_LEN
+                    )
+                    if can_prefill:
+                        decoder_cache = [
+                            RotatingKVCache(self.sliding_window)
+                            for _ in range(self.n_layers)
+                        ]
+                        prefix_embeds = (
+                            text_embeds + audio_embeds[:PREFIX_LEN]
+                        )[None, :, :]
+                        logits = model.decode(
+                            prefix_embeds, t_cond, "causal", decoder_cache,
+                        )
+                        cache_flat = [
+                            x for c in decoder_cache
+                            for x in (c.keys, c.values)
+                        ]
+                        mx.eval(logits, *cache_flat)
                         y = sample(logits)
                         mx.eval(y)
                         audio_embeds = audio_embeds[PREFIX_LEN:]
@@ -266,20 +303,35 @@ class InferenceService:
                         prefilled = True
 
                     # Decode all remaining
-                    if prefilled and audio_embeds is not None and y is not None:
+                    can_decode = prefilled and audio_embeds is not None and y is not None
+                    if can_decode:
                         for i in range(audio_embeds.shape[0]):
-                            token_embed = model.language_model.embed(y.reshape(1, 1))[0, 0]
-                            step_embed = (audio_embeds[i] + token_embed)[None, None, :]
-                            logits = model.decode(step_embed, t_cond, mask=None, cache=decoder_cache)
+                            token_embed = model.language_model.embed(
+                                y.reshape(1, 1),
+                            )[0, 0]
+                            step_embed = (
+                                audio_embeds[i] + token_embed
+                            )[None, None, :]
+                            logits = model.decode(
+                                step_embed, t_cond,
+                                mask=None, cache=decoder_cache,
+                            )
                             next_y = sample(logits)
-                            mx.eval(next_y, *[c.keys for c in decoder_cache], *[c.values for c in decoder_cache])
+                            cache_flat = [
+                                x for c in decoder_cache
+                                for x in (c.keys, c.values)
+                            ]
+                            mx.eval(next_y, *cache_flat)
                             token_id = y.item()
                             if token_id == self.eos_token_id:
                                 break
                             output_tokens.append(token_id)
                             # Display final tokens
                             if config.VERBOSE:
-                                text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
+                                text = sp.decode(
+                                    [token_id],
+                                    special_token_policy=SpecialTokenPolicy.IGNORE,
+                                )
                                 print(text, end="", flush=True)
 
                             if i > 0 and i % 64 == 0:
@@ -292,7 +344,10 @@ class InferenceService:
                             if token_id != self.eos_token_id:
                                 output_tokens.append(token_id)
 
-                    self._result = sp.decode(output_tokens, special_token_policy=SpecialTokenPolicy.IGNORE).strip()
+                    self._result = sp.decode(
+                        output_tokens,
+                        special_token_policy=SpecialTokenPolicy.IGNORE,
+                    ).strip()
 
                     # Free all session memory
                     del decoder_cache, encoder_cache, audio_embeds, ds_buf

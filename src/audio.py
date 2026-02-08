@@ -1,6 +1,6 @@
 import sounddevice as sd
-import numpy as np
-import src.config as config
+
+from src import config
 from src.utils import log
 
 
@@ -24,7 +24,7 @@ class AudioRecorder:
             )
             self.stream.start()
 
-    def _callback(self, indata, frames, time, status):
+    def _callback(self, indata, _frames, _time, _status):
         if self.is_recording and self._on_chunk is not None:
             self._on_chunk(indata[:, 0].copy())
 

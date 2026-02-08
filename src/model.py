@@ -1,7 +1,7 @@
 import math
 
 import mlx.core as mx
-import mlx.nn as nn
+from mlx import nn
 
 
 # ── KV Cache ──────────────────────────────────────────────────────────────────
@@ -33,13 +33,12 @@ class RotatingKVCache:
     def _temporal_order(self, v):
         if self._idx == v.shape[2]:
             return v
-        elif self._idx < self._offset:
+        if self._idx < self._offset:
             return mx.concatenate(
                 [v[..., self._idx:, :], v[..., : self._idx, :]],
                 axis=2,
             )
-        else:
-            return v[..., : self._idx, :]
+        return v[..., : self._idx, :]
 
     def _update_concat(self, keys, values):
         if self.keys is None:
@@ -118,7 +117,10 @@ class CausalConv1d(nn.Module):
 
 
 class EncoderAttention(nn.Module):
-    def __init__(self, dim: int = 1280, n_heads: int = 32, head_dim: int = 64, rope_theta: float = 1e6):
+    def __init__(
+        self, dim: int = 1280, n_heads: int = 32,
+        head_dim: int = 64, rope_theta: float = 1e6,
+    ):
         super().__init__()
         self.n_heads = n_heads
         self.head_dim = head_dim
@@ -137,13 +139,21 @@ class EncoderAttention(nn.Module):
 
         if cache is not None:
             offset = cache.offset
-        q = mx.fast.rope(q, self.head_dim, traditional=True, base=self.rope_theta, scale=1.0, offset=offset)
-        k = mx.fast.rope(k, self.head_dim, traditional=True, base=self.rope_theta, scale=1.0, offset=offset)
+        q = mx.fast.rope(
+            q, self.head_dim, traditional=True,
+            base=self.rope_theta, scale=1.0, offset=offset,
+        )
+        k = mx.fast.rope(
+            k, self.head_dim, traditional=True,
+            base=self.rope_theta, scale=1.0, offset=offset,
+        )
 
         if cache is not None:
             k, v = cache.update_and_fetch(k, v)
 
-        out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=mask)
+        out = mx.fast.scaled_dot_product_attention(
+            q, k, v, scale=self.scale, mask=mask,
+        )
         out = out.transpose(0, 2, 1, 3).reshape(B, L, -1)
         return self.o_proj(out)
 
@@ -160,7 +170,11 @@ class EncoderSwiGLU(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, dim: int = 1280, n_heads: int = 32, head_dim: int = 64, hidden_dim: int = 5120, rope_theta: float = 1e6):
+    def __init__(
+        self, dim: int = 1280, n_heads: int = 32,
+        head_dim: int = 64, hidden_dim: int = 5120,
+        rope_theta: float = 1e6,
+    ):
         super().__init__()
         self.attn_norm = nn.RMSNorm(dim, eps=1e-5)
         self.attention = EncoderAttention(dim, n_heads, head_dim, rope_theta)
@@ -241,7 +255,11 @@ class CausalWhisperEncoder(nn.Module):
 # ── Language Model (Decoder) ─────────────────────────────────────────────────
 
 class DecoderAttention(nn.Module):
-    def __init__(self, dim: int = 3072, n_heads: int = 32, n_kv_heads: int = 8, head_dim: int = 128, rope_theta: float = 1e6):
+    def __init__(
+        self, dim: int = 3072, n_heads: int = 32,
+        n_kv_heads: int = 8, head_dim: int = 128,
+        rope_theta: float = 1e6,
+    ):
         super().__init__()
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads
@@ -260,13 +278,21 @@ class DecoderAttention(nn.Module):
         v = self.v_proj(x).reshape(B, L, self.n_kv_heads, self.head_dim).transpose(0, 2, 1, 3)
 
         offset = cache.offset if cache is not None else 0
-        q = mx.fast.rope(q, self.head_dim, traditional=True, base=self.rope_theta, scale=1.0, offset=offset)
-        k = mx.fast.rope(k, self.head_dim, traditional=True, base=self.rope_theta, scale=1.0, offset=offset)
+        q = mx.fast.rope(
+            q, self.head_dim, traditional=True,
+            base=self.rope_theta, scale=1.0, offset=offset,
+        )
+        k = mx.fast.rope(
+            k, self.head_dim, traditional=True,
+            base=self.rope_theta, scale=1.0, offset=offset,
+        )
 
         if cache is not None:
             k, v = cache.update_and_fetch(k, v)
 
-        out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.scale, mask=mask)
+        out = mx.fast.scaled_dot_product_attention(
+            q, k, v, scale=self.scale, mask=mask,
+        )
         out = out.transpose(0, 2, 1, 3).reshape(B, L, -1)
         return self.o_proj(out)
 
@@ -293,7 +319,12 @@ class AdaptiveNorm(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, dim: int = 3072, n_heads: int = 32, n_kv_heads: int = 8, head_dim: int = 128, hidden_dim: int = 9216, rope_theta: float = 1e6, cond_dim: int = 32):
+    def __init__(
+        self, dim: int = 3072, n_heads: int = 32,
+        n_kv_heads: int = 8, head_dim: int = 128,
+        hidden_dim: int = 9216, rope_theta: float = 1e6,
+        cond_dim: int = 32,
+    ):
         super().__init__()
         self.attn_norm = nn.RMSNorm(dim, eps=1e-5)
         self.attention = DecoderAttention(dim, n_heads, n_kv_heads, head_dim, rope_theta)
@@ -301,7 +332,10 @@ class DecoderLayer(nn.Module):
         self.ffn_norm = nn.RMSNorm(dim, eps=1e-5)
         self.mlp = DecoderSwiGLU(dim, hidden_dim)
 
-    def __call__(self, x: mx.array, t_cond: mx.array, mask=None, cache: RotatingKVCache | None = None) -> mx.array:
+    def __call__(
+        self, x: mx.array, t_cond: mx.array,
+        mask=None, cache: RotatingKVCache | None = None,
+    ) -> mx.array:
         h = self.attention(self.attn_norm(x), mask, cache)
         x = x + h
         ffn_in = self.ffn_norm(x) * (1.0 + self.ada_norm(t_cond))
@@ -310,7 +344,13 @@ class DecoderLayer(nn.Module):
 
 
 class LanguageModel(nn.Module):
-    def __init__(self, dim: int = 3072, n_layers: int = 26, n_heads: int = 32, n_kv_heads: int = 8, head_dim: int = 128, hidden_dim: int = 9216, vocab_size: int = 131072, rope_theta: float = 1e6, cond_dim: int = 32):
+    def __init__(
+        self, dim: int = 3072, n_layers: int = 26,
+        n_heads: int = 32, n_kv_heads: int = 8,
+        head_dim: int = 128, hidden_dim: int = 9216,
+        vocab_size: int = 131072, rope_theta: float = 1e6,
+        cond_dim: int = 32,
+    ):
         super().__init__()
         self.embed_tokens = nn.Embedding(vocab_size, dim)
         self.layers = [
@@ -323,7 +363,10 @@ class LanguageModel(nn.Module):
     def embed(self, input_ids: mx.array) -> mx.array:
         return self.embed_tokens(input_ids)
 
-    def __call__(self, x: mx.array, t_cond: mx.array, mask=None, cache: list[RotatingKVCache] | None = None) -> mx.array:
+    def __call__(
+        self, x: mx.array, t_cond: mx.array,
+        mask=None, cache: list[RotatingKVCache] | None = None,
+    ) -> mx.array:
         t_cond = t_cond.astype(x.dtype)
         for i, layer in enumerate(self.layers):
             layer_cache = cache[i] if cache is not None else None
@@ -365,7 +408,8 @@ class VoxtralRealtime(nn.Module):
         super().__init__()
         enc = config["multimodal"]["whisper_model_args"]["encoder_args"]
         audio_enc = enc["audio_encoding_args"]
-        downsample = config["multimodal"]["whisper_model_args"]["downsample_args"]["downsample_factor"]
+        ds_args = config["multimodal"]["whisper_model_args"]["downsample_args"]
+        downsample = ds_args["downsample_factor"]
 
         self.encoder = CausalWhisperEncoder(
             in_channels=audio_enc["num_mel_bins"],

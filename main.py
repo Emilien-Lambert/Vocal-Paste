@@ -3,7 +3,7 @@ import time
 import pyperclip
 from pynput import keyboard
 
-import src.config as config
+from src import config
 from src.utils import log, paste_text_to_system
 from src.audio import AudioRecorder
 from src.inference import InferenceService
