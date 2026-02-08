@@ -1,4 +1,5 @@
 import os
+import time
 import pyperclip
 from pynput import keyboard
 
@@ -21,13 +22,16 @@ def main():
     def start_recording():
         service.start_streaming()
         recorder.start(on_chunk=service.send_chunk)
+        start_recording.time = time.time()
 
     def stop_recording():
+        duration = time.time() - start_recording.time
         recorder.stop()
         text = service.stop_streaming()
         if text and not text.startswith("ERROR:"):
             pyperclip.copy(text)
-            print(f"> {text}")
+            print(f"\n> {text}")
+            log(f"Recording duration: {duration:.2f}s", verbose_only=True)
             paste_text_to_system()
         else:
             print(text)

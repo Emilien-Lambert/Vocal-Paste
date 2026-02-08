@@ -66,7 +66,7 @@ class InferenceService:
         self._audio_queue.put(("STOP",))
         self._thread.join(timeout=60)
         elapsed = time.time() - start_time
-        log(f"Inference time: {elapsed:.2f}s", verbose_only=True)
+        log(f"Lag after stop: {elapsed:.2f}s", verbose_only=True)
         return self._result or ""
 
     def shutdown(self):
@@ -116,11 +116,17 @@ class InferenceService:
                     model.encode_step(mel, conv1_tail, conv2_tail, encoder_cache, ds_buf)
                 )
                 if new_embeds is not None:
-                    mx.eval(new_embeds)
                     if audio_embeds is not None:
                         audio_embeds = mx.concatenate([audio_embeds, new_embeds])
                     else:
                         audio_embeds = new_embeds
+                    mx.eval(audio_embeds)
+                
+                # CRITICAL FIX: Evaluate encoder cache to prevent graph explosion
+                if encoder_cache is not None:
+                    for c in encoder_cache:
+                        mx.eval(c.keys, c.values)
+
                 mx.clear_cache()
 
             def decode_available():
@@ -158,13 +164,14 @@ class InferenceService:
                     step_embed = (audio_embeds[i] + token_embed)[None, None, :]
                     logits = model.decode(step_embed, t_cond, mask=None, cache=decoder_cache)
                     next_y = sample(logits)
-                    mx.async_eval(next_y)
+                    mx.eval(next_y, *[c.keys for c in decoder_cache], *[c.values for c in decoder_cache])
 
                     token_id = y.item()
                     if token_id == self.eos_token_id:
                         break
                     output_tokens.append(token_id)
-                    if config.VERBOSE and not self._stopped:
+                    
+                    if config.VERBOSE:
                         text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
                         print(text, end="", flush=True)
 
@@ -182,35 +189,58 @@ class InferenceService:
             # ── Main streaming loop ───────────────────────────────────────
             while True:
                 try:
-                    msg = self._audio_queue.get(timeout=0.02)
+                    # Wait for the first chunk
+                    msg = self._audio_queue.get(timeout=0.05)
                 except queue.Empty:
                     decode_available()
                     continue
 
-                if not isinstance(msg, tuple):
-                    continue
+                # Dynamic Batching: Collect all immediately available chunks
+                messages = [msg]
+                while not self._audio_queue.empty():
+                    try:
+                        messages.append(self._audio_queue.get_nowait())
+                    except queue.Empty:
+                        break
 
-                if msg[0] == "CHUNK":
-                    chunk_data = msg[1]
-                    pending_audio = np.append(pending_audio, chunk_data)
-                    n_audio_samples_fed += len(chunk_data)
+                # Process buffer
+                combined_chunk = np.zeros(0, dtype=np.float32)
+                stop_received = False
+                
+                for m in messages:
+                    if not isinstance(m, tuple):
+                        continue
+                    if m[0] == "CHUNK":
+                        combined_chunk = np.append(combined_chunk, m[1])
+                    elif m[0] == "STOP":
+                        stop_received = True
+                
+                # 1. Feed combined audio (Optimization: One encoder call for many chunks)
+                if len(combined_chunk) > 0:
+                    pending_audio = np.append(pending_audio, combined_chunk)
+                    n_audio_samples_fed += len(combined_chunk)
 
-                    if first_cycle and len(pending_audio) >= SAMPLES_PER_TOKEN:
-                        left_pad = np.zeros(N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
-                        n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
-                        chunk = np.concatenate([left_pad, pending_audio[:n_feed]])
-                        pending_audio = pending_audio[n_feed:]
-                        encode_chunk(chunk)
-                        first_cycle = False
-                    elif not first_cycle and len(pending_audio) >= SAMPLES_PER_TOKEN:
-                        n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
-                        chunk = pending_audio[:n_feed]
-                        pending_audio = pending_audio[n_feed:]
-                        encode_chunk(chunk)
+                    # Encode as much as possible
+                    while len(pending_audio) >= SAMPLES_PER_TOKEN:
+                        if first_cycle:
+                            left_pad = np.zeros(N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
+                            n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
+                            chunk = np.concatenate([left_pad, pending_audio[:n_feed]])
+                            pending_audio = pending_audio[n_feed:]
+                            encode_chunk(chunk)
+                            first_cycle = False
+                        else:
+                            # If we have a huge backlog, encode it all in one go if possible
+                            n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
+                            chunk = pending_audio[:n_feed]
+                            pending_audio = pending_audio[n_feed:]
+                            encode_chunk(chunk)
 
-                    decode_available()
+                # 2. Decode available text
+                decode_available()
 
-                elif msg[0] == "STOP":
+                # 3. Handle STOP if it was in the batch
+                if stop_received:
                     # Flush remaining audio + right padding
                     right_pad = np.zeros(N_RIGHT_PAD_TOKENS * SAMPLES_PER_TOKEN, dtype=np.float32)
                     if first_cycle:
@@ -230,7 +260,7 @@ class InferenceService:
                         logits = model.decode(prefix_embeds, t_cond, "causal", decoder_cache)
                         mx.eval(logits, *[x for c in decoder_cache for x in (c.keys, c.values)])
                         y = sample(logits)
-                        mx.async_eval(y)
+                        mx.eval(y)
                         audio_embeds = audio_embeds[PREFIX_LEN:]
                         n_total_decoded = PREFIX_LEN
                         prefilled = True
@@ -242,11 +272,16 @@ class InferenceService:
                             step_embed = (audio_embeds[i] + token_embed)[None, None, :]
                             logits = model.decode(step_embed, t_cond, mask=None, cache=decoder_cache)
                             next_y = sample(logits)
-                            mx.async_eval(next_y)
+                            mx.eval(next_y, *[c.keys for c in decoder_cache], *[c.values for c in decoder_cache])
                             token_id = y.item()
                             if token_id == self.eos_token_id:
                                 break
                             output_tokens.append(token_id)
+                            # Display final tokens
+                            if config.VERBOSE:
+                                text = sp.decode([token_id], special_token_policy=SpecialTokenPolicy.IGNORE)
+                                print(text, end="", flush=True)
+
                             if i > 0 and i % 64 == 0:
                                 mx.clear_cache()
                             y = next_y
@@ -256,6 +291,7 @@ class InferenceService:
                             token_id = y.item()
                             if token_id != self.eos_token_id:
                                 output_tokens.append(token_id)
+
                     self._result = sp.decode(output_tokens, special_token_policy=SpecialTokenPolicy.IGNORE).strip()
 
                     # Free all session memory
