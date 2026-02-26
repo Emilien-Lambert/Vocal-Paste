@@ -9,9 +9,12 @@ from huggingface_hub import snapshot_download
 from .model import VoxtralRealtime
 
 
-def download_model(model_id: str) -> Path:
+def download_model(model_id: str, local_dir: Path) -> Path:
+    from src.config import HF_TOKEN
     path = snapshot_download(
         model_id,
+        local_dir=local_dir,
+        token=HF_TOKEN or None,
         allow_patterns=[
             "consolidated.safetensors",
             "model*.safetensors",
@@ -177,9 +180,10 @@ def _load_original(model_path: Path) -> tuple[VoxtralRealtime, dict]:
 
 
 def load_model(model_path: str | Path) -> tuple[VoxtralRealtime, dict]:
+    from src.config import MODEL_ID
     model_path = Path(model_path)
     if not model_path.exists():
-        model_path = download_model(str(model_path))
+        model_path = download_model(MODEL_ID, local_dir=model_path)
     if _is_converted_format(model_path):
         return _load_converted(model_path)
     return _load_original(model_path)

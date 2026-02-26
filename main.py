@@ -13,7 +13,7 @@ def main():
     if not os.path.exists(config.MODELS_DIR) or not os.listdir(config.MODELS_DIR):
         log("Downloading model...")
         from src.weights import download_model
-        download_model(config.MODEL_ID)
+        download_model(config.MODEL_ID, local_dir=config.MODELS_DIR)
 
     recorder = AudioRecorder()
     service = InferenceService()

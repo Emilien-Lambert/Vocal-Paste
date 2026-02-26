@@ -25,12 +25,14 @@ cp .env.example .env
 
 ### Hugging Face Setup
 
-You need to authenticate with Hugging Face to download the model:
+A token is required to download the model without rate limits:
 
-1. Run `huggingface-cli login`.
-2. Enter your access token (create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)).
+1. Create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+2. Add it to your `.env`:
 
-For more details, refer to the [Hugging Face Login documentation](https://huggingface.co/docs/huggingface_hub/quick-start#login).
+```
+HF_TOKEN=your_token_here
+```
 
 On first run, the model (~3 GB) downloads automatically.
 

@@ -33,7 +33,7 @@ class InferenceService:
         self.model, _ = load_model(config.MODELS_DIR)
         self.sp = load_tokenizer(config.MODELS_DIR)
 
-        streaming_pad = self.sp.get_special_token("[STREAMING_PAD]")
+        streaming_pad = self.sp.get_control_token("[STREAMING_PAD]")
         prompt_tokens = [self.sp.bos_id] + [streaming_pad] * (N_LEFT_PAD_TOKENS + N_DELAY_TOKENS)
         self.eos_token_id = self.sp.eos_id
 
@@ -75,7 +75,6 @@ class InferenceService:
     def _streaming_worker(self):
         try:
             import mlx.core as mx
-            from mistral_common.tokens.tokenizers.base import SpecialTokenPolicy
             from src.model import RotatingKVCache
             from src.mel import log_mel_spectrogram_step, SAMPLES_PER_TOKEN
 
@@ -183,7 +182,6 @@ class InferenceService:
                     if config.VERBOSE:
                         text = sp.decode(
                             [token_id],
-                            special_token_policy=SpecialTokenPolicy.IGNORE,
                         )
                         print(text, end="", flush=True)
 
@@ -330,7 +328,6 @@ class InferenceService:
                             if config.VERBOSE:
                                 text = sp.decode(
                                     [token_id],
-                                    special_token_policy=SpecialTokenPolicy.IGNORE,
                                 )
                                 print(text, end="", flush=True)
 
@@ -346,7 +343,6 @@ class InferenceService:
 
                     self._result = sp.decode(
                         output_tokens,
-                        special_token_policy=SpecialTokenPolicy.IGNORE,
                     ).strip()
 
                     # Free all session memory

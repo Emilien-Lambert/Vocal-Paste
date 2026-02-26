@@ -14,6 +14,7 @@ parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose
 args = parser.parse_args()
 
 VERBOSE = args.verbose
+HF_TOKEN = os.getenv("HF_TOKEN")
 HOLD_TO_TALK = os.getenv("HOLD_TO_TALK", "false").lower() == "true"
 AUTO_PASTE = os.getenv("AUTO_PASTE", "false").lower() == "true"
 SAMPLE_RATE = 16000
