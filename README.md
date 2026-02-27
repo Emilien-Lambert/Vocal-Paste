@@ -2,9 +2,34 @@
 
 Voice-to-clipboard for macOS. Press a key, speak, paste.
 
-100% local — your voice never leaves your Mac. Powered by [Voxtral](https://huggingface.co/mlx-community/Voxtral-Mini-4B-Realtime-6bit) running on Apple Silicon via [MLX](https://github.com/ml-explore/mlx).
+100% local — your voice never leaves your Mac. Powered by the [mlx-community/Voxtral-Mini-4B-Realtime-6bit](https://huggingface.co/mlx-community/Voxtral-Mini-4B-Realtime-6bit) model, running on Apple Silicon via [MLX](https://github.com/ml-explore/mlx).
 
 Perfect for driving AI agents (Claude Code, Codex, Gemini CLI...) with your voice — just speak and paste your prompt.
+
+## Features
+
+- **Multilingual Support:** Transcribe in 13 languages with high accuracy.
+- **Real-Time Performance:** Low-latency transcription optimized for Apple Silicon.
+- **Privacy First:** No cloud processing; everything happens on-device.
+- **Easy Workflow:** Copy-to-clipboard or auto-paste (optional).
+
+## Supported Languages
+
+Vocal Paste supports **13 languages** for real-time speech transcription:
+
+|                    |                     |                       |                    |
+|:-------------------|:--------------------|:----------------------|:-------------------|
+| 🇺🇸 **English**   | 🇫🇷 **French**     | 🇪🇸 **Spanish**      | 🇩🇪 **German**    |
+| 🇮🇹 **Italian**   | 🇳🇱 **Dutch**      | 🇵🇹 **Portuguese**   | 🇷🇺 **Russian**   |
+| 🇨🇳 **Chinese**   | 🇯🇵 **Japanese**   | 🇰🇷 **Korean**       | 🇮🇳 **Hindi**     |
+
+## Model Details
+
+This project uses **Voxtral-Mini-4B-Realtime**, a model developed by **Mistral AI**. It combines a ~3.4B parameter Language Model with a ~970M parameter Audio Encoder to achieve state-of-the-art real-time Automatic Speech Recognition (ASR).
+
+- **Official Model:** [mistralai/Voxtral-Mini-4B-Realtime-2602](https://huggingface.co/mistralai/Voxtral-Mini-4B-Realtime-2602)
+- **MLX Optimized Version:** [mlx-community/Voxtral-Mini-4B-Realtime-6bit](https://huggingface.co/mlx-community/Voxtral-Mini-4B-Realtime-6bit)
+- **Framework:** [Apple MLX](https://github.com/ml-explore/mlx)
 
 ## How it works
 
