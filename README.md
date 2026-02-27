@@ -16,9 +16,13 @@ That's it.
 
 ## Install
 
+Create and activate a virtual environment to manage dependencies properly:
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/Vocal-Paste.git
 cd Vocal-Paste
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
