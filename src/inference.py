@@ -23,9 +23,21 @@ class InferenceService:
         self._audio_queue = queue.Queue()
         self._thread = None
         self._result = None
-        self._stopped = False
+        self._stopped = True
+        self._last_use_time = time.time()
+        self._idle_thread = None
+        self._shutdown_event = threading.Event()
 
     def initialize(self):
+        self.ensure_loaded()
+        self._idle_thread = threading.Thread(target=self._idle_worker, daemon=True)
+        self._idle_thread.start()
+
+    def ensure_loaded(self):
+        if self.model is not None:
+            self._last_use_time = time.time()
+            return
+
         log("Loading model...", verbose_only=True)
         import mlx.core as mx
         from src.weights import load_model, load_tokenizer
@@ -43,7 +55,31 @@ class InferenceService:
         mx.eval(self.t_cond, self.text_embeds)
 
         self.n_layers = len(self.model.language_model.layers)
+        self._last_use_time = time.time()
         log("Model loaded.", verbose_only=True)
+
+    def unload_model(self):
+        if self.model is None:
+            return
+        log("Unloading model to free RAM...", verbose_only=True)
+        import mlx.core as mx
+        self.model = None
+        self.sp = None
+        self.t_cond = None
+        self.text_embeds = None
+        mx.clear_cache()
+        # Suggest garbage collection
+        import gc
+        gc.collect()
+        log("Model unloaded.", verbose_only=True)
+
+    def _idle_worker(self):
+        while not self._shutdown_event.is_set():
+            time.sleep(10)
+            if self.model is not None and not self._thread and self._stopped:
+                idle_time = time.time() - self._last_use_time
+                if idle_time > config.MODEL_TIMEOUT:
+                    self.unload_model()
 
     def start_streaming(self):
         # Clear any leftover items
@@ -64,16 +100,23 @@ class InferenceService:
         start_time = time.time()
         self._stopped = True
         self._audio_queue.put(("STOP",))
-        self._thread.join(timeout=60)
+        if self._thread:
+            self._thread.join(timeout=60)
+        self._thread = None
+        self._last_use_time = time.time()
         elapsed = time.time() - start_time
         log(f"\nLag after stop: {elapsed:.2f}s", verbose_only=True)
         return self._result or ""
 
     def shutdown(self):
-        pass
+        self._shutdown_event.set()
+        if self._idle_thread:
+            self._idle_thread.join(timeout=1)
+        self.unload_model()
 
     def _streaming_worker(self):
         try:
+            self.ensure_loaded()
             import mlx.core as mx
             from src.model import RotatingKVCache
             from src.mel import log_mel_spectrogram_step, SAMPLES_PER_TOKEN

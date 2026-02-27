@@ -61,7 +61,7 @@ Edit `.env`:
 ```
 # Time in seconds before unloading the model from RAM
 # Lower values free RAM faster, higher values keep the model ready for instant use
-MODEL_TIMEOUT=300
+MODEL_TIMEOUT=30
 
 # Hold key to record (true) or toggle on/off (false)
 HOLD_TO_TALK=false

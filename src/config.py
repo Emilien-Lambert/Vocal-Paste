@@ -17,6 +17,7 @@ VERBOSE = args.verbose
 HF_TOKEN = os.getenv("HF_TOKEN")
 HOLD_TO_TALK = os.getenv("HOLD_TO_TALK", "false").lower() == "true"
 AUTO_PASTE = os.getenv("AUTO_PASTE", "false").lower() == "true"
+MODEL_TIMEOUT = int(os.getenv("MODEL_TIMEOUT", "30"))
 SAMPLE_RATE = 16000
 
 MODEL_ID = "mlx-community/Voxtral-Mini-4B-Realtime-6bit"
