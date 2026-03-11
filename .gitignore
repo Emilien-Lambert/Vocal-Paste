@@ -1,6 +1,9 @@
 ### Custom
 **/*.wav
 models
+audios/*
+!audios/.gitkeep
+transcript.txt
 
 ### VisualStudioCode template
 .vscode/*

@@ -23,6 +23,12 @@ Vocal Paste supports **13 languages** for real-time speech transcription:
 | 🇮🇹 **Italian**   | 🇳🇱 **Dutch**      | 🇵🇹 **Portuguese**   | 🇷🇺 **Russian**   |
 | 🇨🇳 **Chinese**   | 🇯🇵 **Japanese**   | 🇰🇷 **Korean**       | 🇮🇳 **Hindi**     |
 
+## Requirements
+
+- macOS (Apple Silicon)
+- Python 3.10+
+- [FFmpeg](https://formulae.brew.sh/formula/ffmpeg) (for file transcription): `brew install ffmpeg`
+
 ## Model Details
 
 This project uses **Voxtral-Mini-4B-Realtime**, a model developed by **Mistral AI**. It combines a ~3.4B parameter Language Model with a ~970M parameter Audio Encoder to achieve state-of-the-art real-time Automatic Speech Recognition (ASR).
@@ -33,11 +39,17 @@ This project uses **Voxtral-Mini-4B-Realtime**, a model developed by **Mistral A
 
 ## How it works
 
+### Live voice recording
+
 1. Press **Right ⌘** — recording starts
 2. Speak naturally — transcription runs in real-time
 3. Release — text is copied to clipboard (and optionally auto-pasted)
 
-That's it.
+### File transcription
+
+Drop an audio file (`.wav`, `.flac`, `.ogg`, `.mp3`, `.m4a`, `.aac`, `.wma`) into the `audios/` folder and start the app. It will automatically transcribe the file and save the result to `transcript.txt` at the project root before entering live recording mode.
+
+> **Note:** Do not start a voice recording while a file is being transcribed.
 
 ## Install
 
@@ -94,11 +106,6 @@ HOLD_TO_TALK=false
 # Auto-paste after transcription (requires Accessibility permission)
 AUTO_PASTE=false
 ```
-
-## Requirements
-
-- macOS (Apple Silicon)
-- Python 3.10+
 
 ## License
 
