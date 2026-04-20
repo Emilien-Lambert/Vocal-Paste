@@ -56,7 +56,7 @@ Drop an audio file (`.wav`, `.flac`, `.ogg`, `.mp3`, `.m4a`, `.aac`, `.wma`) int
 Create and activate a virtual environment to manage dependencies properly:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/Vocal-Paste.git
+git clone https://github.com/Emilien-Lambert/Vocal-Paste.git
 cd Vocal-Paste
 python3 -m venv venv
 source venv/bin/activate
