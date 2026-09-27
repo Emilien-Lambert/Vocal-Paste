@@ -50,7 +50,7 @@ def transcribe_file(service, filepath):
     service.start_streaming()
     for i in range(0, len(audio), CHUNK_SIZE):
         service.send_chunk(audio[i:i + CHUNK_SIZE])
-    text = service.stop_streaming()
+    text = service.stop_streaming(timeout=None)  # a long file can take minutes
 
     if text and not text.startswith("ERROR:"):
         with open(TRANSCRIPT_FILE, "w", encoding="utf-8") as f:

@@ -9,6 +9,13 @@ N_LEFT_PAD_TOKENS = 32
 N_RIGHT_PAD_TOKENS = 17
 N_DELAY_TOKENS = 6
 PREFIX_LEN = 1 + N_LEFT_PAD_TOKENS + N_DELAY_TOKENS  # BOS + 38 STREAMING_PAD
+MAX_ENCODE_TOKENS = 16  # ~1.3s per encoder call, well under its 750-frame window
+SAMPLES_PER_TOKEN = 1280  # mirrors src.mel.SAMPLES_PER_TOKEN
+
+
+def encode_slice_len(n_pending: int) -> int:
+    """Samples to encode next: whole tokens only, capped at MAX_ENCODE_TOKENS."""
+    return min(n_pending // SAMPLES_PER_TOKEN, MAX_ENCODE_TOKENS) * SAMPLES_PER_TOKEN
 
 
 class InferenceService:
@@ -96,12 +103,12 @@ class InferenceService:
     def send_chunk(self, audio_chunk: np.ndarray):
         self._audio_queue.put(("CHUNK", audio_chunk))
 
-    def stop_streaming(self) -> str:
+    def stop_streaming(self, timeout: float | None = 60) -> str:
         start_time = time.time()
         self._stopped = True
         self._audio_queue.put(("STOP",))
         if self._thread:
-            self._thread.join(timeout=60)
+            self._thread.join(timeout=timeout)
         self._thread = None
         self._last_use_time = time.time()
         elapsed = time.time() - start_time
@@ -273,24 +280,21 @@ class InferenceService:
                     pending_audio = np.append(pending_audio, combined_chunk)
                     n_audio_samples_fed += len(combined_chunk)
 
-                    # Encode as much as possible
+                    # Encode in bounded slices: one huge call would attend beyond the
+                    # encoder's sliding window and garble everything past ~15s.
                     while len(pending_audio) >= SAMPLES_PER_TOKEN:
+                        n_feed = encode_slice_len(len(pending_audio))
+                        chunk = pending_audio[:n_feed]
+                        pending_audio = pending_audio[n_feed:]
                         if first_cycle:
                             left_pad = np.zeros(
                                 N_LEFT_PAD_TOKENS * SAMPLES_PER_TOKEN,
                                 dtype=np.float32,
                             )
-                            n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
-                            chunk = np.concatenate([left_pad, pending_audio[:n_feed]])
-                            pending_audio = pending_audio[n_feed:]
-                            encode_chunk(chunk)
+                            chunk = np.concatenate([left_pad, chunk])
                             first_cycle = False
-                        else:
-                            # If we have a huge backlog, encode it all in one go if possible
-                            n_feed = (len(pending_audio) // SAMPLES_PER_TOKEN) * SAMPLES_PER_TOKEN
-                            chunk = pending_audio[:n_feed]
-                            pending_audio = pending_audio[n_feed:]
-                            encode_chunk(chunk)
+                        encode_chunk(chunk)
+                        decode_available()
 
                 # 2. Decode available text
                 decode_available()
